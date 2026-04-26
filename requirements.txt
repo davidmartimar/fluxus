@@ -1,0 +1,19 @@
+# UI
+customtkinter>=5.2.0
+
+# Audio capture
+sounddevice>=0.4.6
+numpy>=1.26.0
+
+# STT - Local
+faster-whisper>=1.0.0
+
+# STT - API fallback + LLM
+openai>=1.30.0
+anthropic>=0.28.0
+
+# Clipboard
+pyperclip>=1.9.0
+
+# Global hotkeys
+keyboard>=0.13.5
