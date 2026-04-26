@@ -13,11 +13,15 @@ External layers (audio, STT, etc.) wire in via the callback properties:
 from __future__ import annotations
 
 import threading
+from pathlib import Path
 from typing import Callable, Optional
 
 import customtkinter as ctk
+from PIL import Image
 
 from config import settings
+
+_ICON_PATH = Path(__file__).parent / "fluxus_icon.png"
 
 # ── Theme ────────────────────────────────────────────────────────────────────
 ctk.set_appearance_mode("dark")
@@ -26,7 +30,7 @@ ctk.set_default_color_theme("blue")
 # ── Palette ──────────────────────────────────────────────────────────────────
 _CLR_BG = "#1a1a1a"
 _CLR_SURFACE = "#2b2b2b"
-_CLR_IDLE = "#3a7ebf"
+_CLR_IDLE = "#FF4444"
 _CLR_RECORDING = "#bf3a3a"
 _CLR_TEXT = "#e0e0e0"
 _CLR_SUBTEXT = "#888888"
@@ -47,6 +51,18 @@ class App(ctk.CTk):
         self._drag_x = 0
         self._drag_y = 0
 
+        # ── Load icon ────────────────────────────────────────────────────────
+        self._icon_img_large = ctk.CTkImage(
+            light_image=Image.open(_ICON_PATH),
+            dark_image=Image.open(_ICON_PATH),
+            size=(22, 22),
+        )
+        self._icon_img_small = ctk.CTkImage(
+            light_image=Image.open(_ICON_PATH),
+            dark_image=Image.open(_ICON_PATH),
+            size=(16, 16),
+        )
+
         self._build_window()
         self._build_widgets()
         self._bind_drag()
@@ -58,9 +74,15 @@ class App(ctk.CTk):
         self.title("FLUXUS")
         self.geometry("300x130")
         self.resizable(False, False)
-        self.overrideredirect(True)          # borderless
+        self.overrideredirect(True)           # borderless
         self.wm_attributes("-topmost", True)  # always-on-top
         self.wm_attributes("-alpha", settings.WINDOW_OPACITY)
+        # Taskbar / Alt-Tab icon (requires a real .ico or .png via iconphoto)
+        if _ICON_PATH.exists():
+            from PIL import ImageTk
+            _raw = Image.open(_ICON_PATH).resize((32, 32))
+            self._tk_icon = ImageTk.PhotoImage(_raw)
+            self.iconphoto(True, self._tk_icon)
         self._center_window()
 
     def _center_window(self) -> None:
@@ -85,11 +107,13 @@ class App(ctk.CTk):
 
         ctk.CTkLabel(
             title_bar,
-            text="  FLUXUS",
+            text=" FLUXUS",
+            image=self._icon_img_small,
+            compound="left",
             font=ctk.CTkFont(family="Segoe UI", size=11, weight="bold"),
             text_color=_CLR_TEXT,
             anchor="w",
-        ).grid(row=0, column=0, sticky="w", pady=4)
+        ).grid(row=0, column=0, sticky="w", padx=(6, 0), pady=4)
 
         self._close_btn = ctk.CTkButton(
             title_bar,
@@ -124,7 +148,7 @@ class App(ctk.CTk):
             text="● Grabar",
             font=ctk.CTkFont(family="Segoe UI", size=13, weight="bold"),
             fg_color=_CLR_IDLE,
-            hover_color="#2e6da3",
+            hover_color="#cc3333",
             height=36,
             corner_radius=8,
             command=self._toggle_record,
@@ -183,7 +207,7 @@ class App(ctk.CTk):
         self._record_btn.configure(
             text="● Grabar",
             fg_color=_CLR_IDLE,
-            hover_color="#2e6da3",
+            hover_color="#cc3333",
         )
         self.set_status("Procesando…")
         if self.on_record_stop:
