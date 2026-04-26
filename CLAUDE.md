@@ -26,7 +26,7 @@ src/
   ui/        ← CustomTkinter floating widget (borderless, always-on-top, global hotkey)
   audio/     ← sounddevice recording, in-memory buffer, temp file cleanup
   stt/       ← abstract STT interface; local faster-whisper engine + OpenAI API fallback
-  llm/       ← optional LLM refinement (gpt-4o-mini / claude-haiku), cost tracking
+  llm/       ← optional LLM refinement via OpenAI (gpt-4o-mini), cost tracking
   commands/  ← keyword router: "Comando: ..." → local Python handler, bypasses LLM
   clipboard/ ← pyperclip copy + visual notification back to UI
 ```
@@ -48,7 +48,8 @@ Key settings:
 - `FLUXUS_STT_ENGINE`: `local` (default) or `api`
 - `FLUXUS_WHISPER_MODEL`: `tiny` | `base` | `small` | `medium` | `large-v3`
 - `FLUXUS_LLM_ENABLED`: `true` / `false`
-- `FLUXUS_LLM_PROVIDER`: `openai` | `anthropic`
+- `FLUXUS_LLM_MODEL`: OpenAI model for refinement (default `gpt-4o-mini`)
+- `FLUXUS_WHISPER_DEVICE`: `auto` (CUDA → CPU fallback) | `cuda` | `cpu`
 - `FLUXUS_HOTKEY`: default `ctrl+shift+space`
 
 ## Branch / PR strategy

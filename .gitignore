@@ -42,3 +42,6 @@ tmp_audio/
 # Logs
 *.log
 logs/
+
+# Local planning docs
+ROADMAP_PRS.md
