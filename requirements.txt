@@ -1,5 +1,6 @@
 # UI
 customtkinter>=5.2.0
+Pillow>=10.0.0
 
 # Audio capture
 sounddevice>=0.4.6
