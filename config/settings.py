@@ -11,6 +11,8 @@ WHISPER_MODEL = os.getenv("FLUXUS_WHISPER_MODEL", "base")  # tiny | base | small
 # Device for local STT: "auto" tries CUDA first, then falls back to CPU.
 # NVIDIA users: "cuda" | AMD/Intel GPU users: "cpu" (ROCm builds not bundled)
 WHISPER_DEVICE = os.getenv("FLUXUS_WHISPER_DEVICE", "auto")  # "auto" | "cuda" | "cpu"
+# Language hint for transcription. "auto" lets Whisper detect (slower, error-prone on short clips).
+WHISPER_LANGUAGE = os.getenv("FLUXUS_LANGUAGE", "es")  # "es" | "en" | "auto"
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY", "")
 
 # --- LLM (OpenAI only) ---
