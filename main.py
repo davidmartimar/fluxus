@@ -12,6 +12,8 @@ _MIN_AUDIO_SECONDS = 0.3
 
 
 def main() -> None:
+    import pyperclip
+
     from src.ui import App
     from src.audio import Recorder, default_input_device, list_input_devices
     from src.stt import create_engine
@@ -24,15 +26,35 @@ def main() -> None:
     devices = list_input_devices()
     app.set_input_devices(devices, current=initial_device)
     app.on_device_change = recorder.set_device
+    app.set_compute_device(stt.user_choice)
+
+    def copy_to_clipboard(text: str) -> None:
+        try:
+            pyperclip.copy(text)
+        except Exception as exc:
+            app.notify_error(f"Copia fallida: {exc}")
+
+    app.on_copy = copy_to_clipboard
 
     # Warm up the model in the background so the first transcribe doesn't pay model load cost.
     def warmup() -> None:
         app.set_status("Cargando modelo…")
         try:
             stt.warmup()
-            app.set_status("Listo")
+            device = getattr(stt, "device", "?")
+            app.set_status(f"Listo ({device.upper()})")
         except Exception as exc:
             app.notify_error(f"Modelo no cargado: {exc}")
+
+    def change_compute(choice: str) -> None:
+        try:
+            stt.set_device(choice)
+        except Exception as exc:
+            app.notify_error(f"Cambio de compute fallido: {exc}")
+            return
+        threading.Thread(target=warmup, daemon=True).start()
+
+    app.on_compute_change = change_compute
 
     threading.Thread(target=warmup, daemon=True).start()
 
