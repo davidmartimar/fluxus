@@ -4,10 +4,15 @@ Main application window for FLUXUS.
 A borderless, always-on-top floating widget built with CustomTkinter.
 Draggable via click-and-drag on the window body.
 The record button toggles between idle and recording states.
+A collapsible mic picker shows the active input device and lets the user pick another.
+The transcript stays visible until the next recording starts; the user clicks Copiar
+to copy it to the clipboard.
 External layers (audio, STT, etc.) wire in via the callback properties:
     app.on_record_start  — called when recording begins
     app.on_record_stop   — called when recording stops; receives no args
-    app.on_hotkey        — called on global hotkey press (same as button toggle)
+    app.on_device_change — called with the new device index when the user picks a mic
+    app.on_compute_change — called with 'auto'|'cuda'|'cpu' when the user picks a compute target
+    app.on_copy          — called with the transcript text when the user clicks Copiar
 """
 
 from __future__ import annotations
@@ -35,6 +40,13 @@ _CLR_RECORDING = "#bf3a3a"
 _CLR_TEXT = "#e0e0e0"
 _CLR_SUBTEXT = "#888888"
 
+_COMPUTE_LABELS = {
+    "Auto": "auto",
+    "GPU (CUDA)": "cuda",
+    "CPU": "cpu",
+}
+_COMPUTE_REVERSE = {v: k for k, v in _COMPUTE_LABELS.items()}
+
 
 class App(ctk.CTk):
     """FLUXUS floating widget."""
@@ -45,11 +57,16 @@ class App(ctk.CTk):
         # ── Callbacks (wired by pipeline in main.py) ─────────────────────────
         self.on_record_start: Optional[Callable[[], None]] = None
         self.on_record_stop: Optional[Callable[[], None]] = None
+        self.on_device_change: Optional[Callable[[int], None]] = None
+        self.on_compute_change: Optional[Callable[[str], None]] = None
+        self.on_copy: Optional[Callable[[str], None]] = None
 
         # ── Internal state ────────────────────────────────────────────────────
         self._recording = False
         self._drag_x = 0
         self._drag_y = 0
+        self._device_labels: dict[str, int] = {}
+        self._current_transcript: str = ""
 
         # ── Load icon ────────────────────────────────────────────────────────
         self._icon_img_large = ctk.CTkImage(
@@ -72,7 +89,7 @@ class App(ctk.CTk):
 
     def _build_window(self) -> None:
         self.title("FLUXUS")
-        self.geometry("300x130")
+        self.geometry("300x285")
         self.resizable(False, False)
         self.overrideredirect(True)           # borderless
         self.wm_attributes("-topmost", True)  # always-on-top
@@ -89,7 +106,7 @@ class App(ctk.CTk):
         self.update_idletasks()
         sw = self.winfo_screenwidth()
         sh = self.winfo_screenheight()
-        w, h = 300, 130
+        w, h = 300, 285
         x = (sw - w) // 2
         y = sh - h - 80  # near taskbar by default
         self.geometry(f"{w}x{h}+{x}+{y}")
@@ -141,7 +158,103 @@ class App(ctk.CTk):
             text_color=_CLR_SUBTEXT,
             anchor="center",
         )
-        self._status_label.grid(row=0, column=0, sticky="ew", pady=(0, 8))
+        self._status_label.grid(row=0, column=0, sticky="ew", pady=(0, 6))
+
+        # Mic picker — collapsed by default, expands on click and re-collapses on selection.
+        self._mic_frame = ctk.CTkFrame(body, fg_color="transparent", height=24)
+        self._mic_frame.grid(row=1, column=0, sticky="ew", pady=(0, 8))
+        self._mic_frame.grid_columnconfigure(0, weight=1)
+        self._mic_frame.grid_propagate(False)
+
+        self._mic_btn = ctk.CTkButton(
+            self._mic_frame,
+            text="🎤 (sin micrófono) ▾",
+            fg_color="transparent",
+            hover_color=_CLR_SURFACE,
+            text_color=_CLR_SUBTEXT,
+            font=ctk.CTkFont(family="Segoe UI", size=10),
+            height=22,
+            corner_radius=4,
+            command=self._expand_mic_picker,
+        )
+        self._mic_btn.grid(row=0, column=0, sticky="ew")
+
+        self._mic_combo = ctk.CTkComboBox(
+            self._mic_frame,
+            values=[],
+            font=ctk.CTkFont(family="Segoe UI", size=10),
+            height=22,
+            command=self._on_mic_chosen,
+            state="readonly",
+        )
+        self._mic_combo.grid(row=0, column=0, sticky="ew")
+        self._mic_combo.grid_remove()
+
+        # Compute picker — same collapse/expand pattern as the mic picker.
+        self._compute_frame = ctk.CTkFrame(body, fg_color="transparent", height=24)
+        self._compute_frame.grid(row=2, column=0, sticky="ew", pady=(0, 8))
+        self._compute_frame.grid_columnconfigure(0, weight=1)
+        self._compute_frame.grid_propagate(False)
+
+        self._compute_btn = ctk.CTkButton(
+            self._compute_frame,
+            text="🖥 Auto ▾",
+            fg_color="transparent",
+            hover_color=_CLR_SURFACE,
+            text_color=_CLR_SUBTEXT,
+            font=ctk.CTkFont(family="Segoe UI", size=10),
+            height=22,
+            corner_radius=4,
+            command=self._expand_compute_picker,
+        )
+        self._compute_btn.grid(row=0, column=0, sticky="ew")
+
+        self._compute_combo = ctk.CTkComboBox(
+            self._compute_frame,
+            values=list(_COMPUTE_LABELS.keys()),
+            font=ctk.CTkFont(family="Segoe UI", size=10),
+            height=22,
+            command=self._on_compute_chosen,
+            state="readonly",
+        )
+        self._compute_combo.grid(row=0, column=0, sticky="ew")
+        self._compute_combo.grid_remove()
+
+        # Transcript area — textbox (selectable, read-only) + Copiar button.
+        transcript_frame = ctk.CTkFrame(body, fg_color="transparent")
+        transcript_frame.grid(row=3, column=0, sticky="nsew", pady=(0, 8))
+        transcript_frame.grid_columnconfigure(0, weight=1)
+        transcript_frame.grid_rowconfigure(0, weight=1)
+
+        self._transcript_textbox = ctk.CTkTextbox(
+            transcript_frame,
+            height=70,
+            font=ctk.CTkFont(family="Segoe UI", size=11),
+            fg_color=_CLR_SURFACE,
+            text_color=_CLR_TEXT,
+            border_width=0,
+            corner_radius=6,
+            wrap="word",
+        )
+        self._transcript_textbox.grid(row=0, column=0, sticky="nsew", padx=(0, 6))
+        self._transcript_textbox.configure(state="disabled")
+
+        self._copy_btn = ctk.CTkButton(
+            transcript_frame,
+            text="Copiar",
+            width=64,
+            font=ctk.CTkFont(family="Segoe UI", size=10, weight="bold"),
+            fg_color=_CLR_SURFACE,
+            hover_color="#3a3a3a",
+            text_color=_CLR_SUBTEXT,
+            text_color_disabled="#555",
+            corner_radius=6,
+            state="disabled",
+            command=self._on_copy_click,
+        )
+        self._copy_btn.grid(row=0, column=1, sticky="ns")
+
+        body.grid_rowconfigure(3, weight=1)
 
         self._record_btn = ctk.CTkButton(
             body,
@@ -153,7 +266,7 @@ class App(ctk.CTk):
             corner_radius=8,
             command=self._toggle_record,
         )
-        self._record_btn.grid(row=1, column=0, sticky="ew")
+        self._record_btn.grid(row=4, column=0, sticky="ew")
 
     # ── Drag ─────────────────────────────────────────────────────────────────
 
@@ -193,6 +306,7 @@ class App(ctk.CTk):
 
     def _start_recording(self) -> None:
         self._recording = True
+        self.clear_transcript()
         self._record_btn.configure(
             text="■ Detener",
             fg_color=_CLR_RECORDING,
@@ -213,16 +327,125 @@ class App(ctk.CTk):
         if self.on_record_stop:
             threading.Thread(target=self.on_record_stop, daemon=True).start()
 
+    # ── Mic picker ────────────────────────────────────────────────────────────
+
+    def set_input_devices(
+        self,
+        devices: list[tuple[int, str]],
+        current: Optional[int] = None,
+    ) -> None:
+        """Populate the mic picker. `devices` is [(index, name), ...]."""
+        self._device_labels = {}
+        labels: list[str] = []
+        for idx, name in devices:
+            label = self._unique_label(name, labels)
+            self._device_labels[label] = idx
+            labels.append(label)
+
+        self._mic_combo.configure(values=labels or [""])
+
+        chosen_label: Optional[str] = None
+        if current is not None:
+            for label, idx in self._device_labels.items():
+                if idx == current:
+                    chosen_label = label
+                    break
+        if chosen_label is None and labels:
+            chosen_label = labels[0]
+
+        if chosen_label is not None:
+            self._mic_combo.set(chosen_label)
+            self._update_mic_btn_label(chosen_label)
+        else:
+            self._mic_btn.configure(text="🎤 (sin micrófono) ▾")
+
+    @staticmethod
+    def _unique_label(name: str, existing: list[str]) -> str:
+        # sounddevice can list the same device name twice (different APIs); disambiguate.
+        if name not in existing:
+            return name
+        n = 2
+        while f"{name} ({n})" in existing:
+            n += 1
+        return f"{name} ({n})"
+
+    def _update_mic_btn_label(self, label: str) -> None:
+        short = label if len(label) <= 32 else label[:31] + "…"
+        self._mic_btn.configure(text=f"🎤 {short} ▾")
+
+    def _expand_mic_picker(self) -> None:
+        self._mic_btn.grid_remove()
+        self._mic_combo.grid()
+        self._mic_combo.focus_set()
+
+    def _on_mic_chosen(self, label: str) -> None:
+        self._mic_combo.grid_remove()
+        self._mic_btn.grid()
+        self._update_mic_btn_label(label)
+        idx = self._device_labels.get(label)
+        if idx is not None and self.on_device_change:
+            self.on_device_change(idx)
+
+    # ── Compute picker ────────────────────────────────────────────────────────
+
+    def set_compute_device(self, choice: str) -> None:
+        """Programmatically reflect the active compute mode in the picker.
+        choice: 'auto' | 'cuda' | 'cpu'."""
+        label = _COMPUTE_REVERSE.get(choice, "Auto")
+        self.after(0, lambda: self._render_compute(label))
+
+    def _render_compute(self, label: str) -> None:
+        self._compute_combo.set(label)
+        self._compute_btn.configure(text=f"🖥 {label} ▾")
+
+    def _expand_compute_picker(self) -> None:
+        self._compute_btn.grid_remove()
+        self._compute_combo.grid()
+        self._compute_combo.focus_set()
+
+    def _on_compute_chosen(self, label: str) -> None:
+        self._compute_combo.grid_remove()
+        self._compute_btn.grid()
+        self._compute_btn.configure(text=f"🖥 {label} ▾")
+        choice = _COMPUTE_LABELS.get(label, "auto")
+        if self.on_compute_change:
+            self.on_compute_change(choice)
+
     # ── Public API ────────────────────────────────────────────────────────────
 
     def set_status(self, text: str) -> None:
         """Update the status label (thread-safe)."""
         self.after(0, lambda: self._status_label.configure(text=text))
 
+    def show_transcript(self, text: str) -> None:
+        """Display the transcript in the textbox and enable Copiar (thread-safe)."""
+        self.after(0, lambda: self._render_transcript(text))
+
+    def clear_transcript(self) -> None:
+        """Clear the transcript textbox and disable Copiar (thread-safe)."""
+        self.after(0, lambda: self._render_transcript(""))
+
+    def _render_transcript(self, text: str) -> None:
+        self._current_transcript = text
+        self._transcript_textbox.configure(state="normal")
+        self._transcript_textbox.delete("1.0", "end")
+        if text:
+            self._transcript_textbox.insert("1.0", text)
+        self._transcript_textbox.configure(state="disabled")
+        self._copy_btn.configure(state="normal" if text else "disabled")
+
+    def _on_copy_click(self) -> None:
+        text = self._current_transcript
+        if not text:
+            return
+        if self.on_copy:
+            self.on_copy(text)
+        self.set_status("✓ Copiado al portapapeles")
+
     def notify_done(self, text: str) -> None:
-        """Called by the pipeline when text is ready and copied to clipboard."""
-        self.set_status(f"✓ Copiado — {text[:40]}{'…' if len(text) > 40 else ''}")
-        self.after(4000, lambda: self.set_status("Listo"))
+        """Called by the pipeline when transcription is ready."""
+        self.show_transcript(text)
+        self.set_status("Transcripción lista")
 
     def notify_error(self, message: str) -> None:
         """Called by the pipeline on any error."""

@@ -62,19 +62,42 @@ class AudioData:
         self.samples = np.array([], dtype=np.float32)
 
 
+def list_input_devices() -> list[tuple[int, str]]:
+    """Return [(index, name), ...] for every device that supports microphone input."""
+    out: list[tuple[int, str]] = []
+    for idx, dev in enumerate(sd.query_devices()):
+        if dev.get("max_input_channels", 0) > 0:
+            out.append((idx, dev["name"]))
+    return out
+
+
+def default_input_device() -> Optional[int]:
+    """Return the system's default input device index, or None if unavailable."""
+    try:
+        idx = sd.default.device[0]
+        return int(idx) if idx is not None and idx >= 0 else None
+    except Exception:
+        return None
+
+
 class Recorder:
     """Starts and stops microphone recording on demand."""
 
-    def __init__(self) -> None:
+    def __init__(self, device: Optional[int] = None) -> None:
         self._chunks: list[np.ndarray] = []
         self._lock = threading.Lock()
         self._stream: Optional[sd.InputStream] = None
         self._recording = False
+        self._device: Optional[int] = device
 
     # ── Public API ────────────────────────────────────────────────────────────
 
+    def set_device(self, device: Optional[int]) -> None:
+        """Change the input device. Applies to the *next* start(); ignored mid-recording."""
+        self._device = device
+
     def start(self) -> None:
-        """Begin capturing audio from the default microphone."""
+        """Begin capturing audio from the configured (or default) microphone."""
         if self._recording:
             return
         with self._lock:
@@ -82,6 +105,7 @@ class Recorder:
             self._recording = True
 
         self._stream = sd.InputStream(
+            device=self._device,
             samplerate=settings.AUDIO_SAMPLE_RATE,
             channels=settings.AUDIO_CHANNELS,
             dtype="float32",
