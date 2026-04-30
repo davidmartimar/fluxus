@@ -13,12 +13,17 @@ _MIN_AUDIO_SECONDS = 0.3
 
 def main() -> None:
     from src.ui import App
-    from src.audio import Recorder
+    from src.audio import Recorder, default_input_device, list_input_devices
     from src.stt import create_engine
 
     app = App()
-    recorder = Recorder()
+    initial_device = default_input_device()
+    recorder = Recorder(device=initial_device)
     stt = create_engine()
+
+    devices = list_input_devices()
+    app.set_input_devices(devices, current=initial_device)
+    app.on_device_change = recorder.set_device
 
     # Warm up the model in the background so the first transcribe doesn't pay model load cost.
     def warmup() -> None:

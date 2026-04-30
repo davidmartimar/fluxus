@@ -4,10 +4,11 @@ Main application window for FLUXUS.
 A borderless, always-on-top floating widget built with CustomTkinter.
 Draggable via click-and-drag on the window body.
 The record button toggles between idle and recording states.
+A collapsible mic picker shows the active input device and lets the user pick another.
 External layers (audio, STT, etc.) wire in via the callback properties:
     app.on_record_start  — called when recording begins
     app.on_record_stop   — called when recording stops; receives no args
-    app.on_hotkey        — called on global hotkey press (same as button toggle)
+    app.on_device_change — called with the new device index when the user picks a mic
 """
 
 from __future__ import annotations
@@ -45,11 +46,13 @@ class App(ctk.CTk):
         # ── Callbacks (wired by pipeline in main.py) ─────────────────────────
         self.on_record_start: Optional[Callable[[], None]] = None
         self.on_record_stop: Optional[Callable[[], None]] = None
+        self.on_device_change: Optional[Callable[[int], None]] = None
 
         # ── Internal state ────────────────────────────────────────────────────
         self._recording = False
         self._drag_x = 0
         self._drag_y = 0
+        self._device_labels: dict[str, int] = {}
 
         # ── Load icon ────────────────────────────────────────────────────────
         self._icon_img_large = ctk.CTkImage(
@@ -72,7 +75,7 @@ class App(ctk.CTk):
 
     def _build_window(self) -> None:
         self.title("FLUXUS")
-        self.geometry("300x130")
+        self.geometry("300x160")
         self.resizable(False, False)
         self.overrideredirect(True)           # borderless
         self.wm_attributes("-topmost", True)  # always-on-top
@@ -89,7 +92,7 @@ class App(ctk.CTk):
         self.update_idletasks()
         sw = self.winfo_screenwidth()
         sh = self.winfo_screenheight()
-        w, h = 300, 130
+        w, h = 300, 160
         x = (sw - w) // 2
         y = sh - h - 80  # near taskbar by default
         self.geometry(f"{w}x{h}+{x}+{y}")
@@ -141,7 +144,37 @@ class App(ctk.CTk):
             text_color=_CLR_SUBTEXT,
             anchor="center",
         )
-        self._status_label.grid(row=0, column=0, sticky="ew", pady=(0, 8))
+        self._status_label.grid(row=0, column=0, sticky="ew", pady=(0, 6))
+
+        # Mic picker — collapsed by default, expands on click and re-collapses on selection.
+        self._mic_frame = ctk.CTkFrame(body, fg_color="transparent", height=24)
+        self._mic_frame.grid(row=1, column=0, sticky="ew", pady=(0, 8))
+        self._mic_frame.grid_columnconfigure(0, weight=1)
+        self._mic_frame.grid_propagate(False)
+
+        self._mic_btn = ctk.CTkButton(
+            self._mic_frame,
+            text="🎤 (sin micrófono) ▾",
+            fg_color="transparent",
+            hover_color=_CLR_SURFACE,
+            text_color=_CLR_SUBTEXT,
+            font=ctk.CTkFont(family="Segoe UI", size=10),
+            height=22,
+            corner_radius=4,
+            command=self._expand_mic_picker,
+        )
+        self._mic_btn.grid(row=0, column=0, sticky="ew")
+
+        self._mic_combo = ctk.CTkComboBox(
+            self._mic_frame,
+            values=[],
+            font=ctk.CTkFont(family="Segoe UI", size=10),
+            height=22,
+            command=self._on_mic_chosen,
+            state="readonly",
+        )
+        self._mic_combo.grid(row=0, column=0, sticky="ew")
+        self._mic_combo.grid_remove()
 
         self._record_btn = ctk.CTkButton(
             body,
@@ -153,7 +186,7 @@ class App(ctk.CTk):
             corner_radius=8,
             command=self._toggle_record,
         )
-        self._record_btn.grid(row=1, column=0, sticky="ew")
+        self._record_btn.grid(row=2, column=0, sticky="ew")
 
     # ── Drag ─────────────────────────────────────────────────────────────────
 
@@ -212,6 +245,65 @@ class App(ctk.CTk):
         self.set_status("Procesando…")
         if self.on_record_stop:
             threading.Thread(target=self.on_record_stop, daemon=True).start()
+
+    # ── Mic picker ────────────────────────────────────────────────────────────
+
+    def set_input_devices(
+        self,
+        devices: list[tuple[int, str]],
+        current: Optional[int] = None,
+    ) -> None:
+        """Populate the mic picker. `devices` is [(index, name), ...]."""
+        self._device_labels = {}
+        labels: list[str] = []
+        for idx, name in devices:
+            label = self._unique_label(name, labels)
+            self._device_labels[label] = idx
+            labels.append(label)
+
+        self._mic_combo.configure(values=labels or [""])
+
+        chosen_label: Optional[str] = None
+        if current is not None:
+            for label, idx in self._device_labels.items():
+                if idx == current:
+                    chosen_label = label
+                    break
+        if chosen_label is None and labels:
+            chosen_label = labels[0]
+
+        if chosen_label is not None:
+            self._mic_combo.set(chosen_label)
+            self._update_mic_btn_label(chosen_label)
+        else:
+            self._mic_btn.configure(text="🎤 (sin micrófono) ▾")
+
+    @staticmethod
+    def _unique_label(name: str, existing: list[str]) -> str:
+        # sounddevice can list the same device name twice (different APIs); disambiguate.
+        if name not in existing:
+            return name
+        n = 2
+        while f"{name} ({n})" in existing:
+            n += 1
+        return f"{name} ({n})"
+
+    def _update_mic_btn_label(self, label: str) -> None:
+        short = label if len(label) <= 32 else label[:31] + "…"
+        self._mic_btn.configure(text=f"🎤 {short} ▾")
+
+    def _expand_mic_picker(self) -> None:
+        self._mic_btn.grid_remove()
+        self._mic_combo.grid()
+        self._mic_combo.focus_set()
+
+    def _on_mic_chosen(self, label: str) -> None:
+        self._mic_combo.grid_remove()
+        self._mic_btn.grid()
+        self._update_mic_btn_label(label)
+        idx = self._device_labels.get(label)
+        if idx is not None and self.on_device_change:
+            self.on_device_change(idx)
 
     # ── Public API ────────────────────────────────────────────────────────────
 
