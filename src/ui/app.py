@@ -25,8 +25,10 @@ import customtkinter as ctk
 from PIL import Image
 
 from config import settings
+from src.ui._taskbar import force_taskbar_entry, set_app_user_model_id
 
 _ICON_PATH = Path(__file__).parent / "fluxus_icon.png"
+_APP_USER_MODEL_ID = "dorvincrew.fluxus"
 
 # ── Theme ────────────────────────────────────────────────────────────────────
 ctk.set_appearance_mode("dark")
@@ -52,6 +54,8 @@ class App(ctk.CTk):
     """FLUXUS floating widget."""
 
     def __init__(self) -> None:
+        # Must run before the HWND is created so the taskbar groups under our identity.
+        set_app_user_model_id(_APP_USER_MODEL_ID)
         super().__init__(fg_color=_CLR_BG)
 
         # ── Callbacks (wired by pipeline in main.py) ─────────────────────────
@@ -101,6 +105,9 @@ class App(ctk.CTk):
             self._tk_icon = ImageTk.PhotoImage(_raw)
             self.iconphoto(True, self._tk_icon)
         self._center_window()
+        # overrideredirect strips the window from the Windows taskbar; re-add it
+        # via WS_EX_APPWINDOW so users can find/focus FLUXUS like any other app.
+        force_taskbar_entry(self)
 
     def _center_window(self) -> None:
         self.update_idletasks()
