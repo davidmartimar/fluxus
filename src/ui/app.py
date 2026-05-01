@@ -25,9 +25,14 @@ import customtkinter as ctk
 from PIL import Image
 
 from config import settings
-from src.ui._taskbar import force_taskbar_entry, set_app_user_model_id
+from src.ui._taskbar import (
+    apply_taskbar_icon,
+    force_taskbar_entry,
+    set_app_user_model_id,
+)
 
 _ICON_PATH = Path(__file__).parent / "fluxus_icon.png"
+_ICO_PATH = Path(__file__).parent / "fluxus_icon.ico"
 _APP_USER_MODEL_ID = "dorvincrew.fluxus"
 
 # ── Theme ────────────────────────────────────────────────────────────────────
@@ -98,16 +103,26 @@ class App(ctk.CTk):
         self.overrideredirect(True)           # borderless
         self.wm_attributes("-topmost", True)  # always-on-top
         self.wm_attributes("-alpha", settings.WINDOW_OPACITY)
-        # Taskbar / Alt-Tab icon (requires a real .ico or .png via iconphoto)
+        # Title-bar / Alt-Tab icon (Tk-level, used inside the app window).
         if _ICON_PATH.exists():
             from PIL import ImageTk
             _raw = Image.open(_ICON_PATH).resize((32, 32))
             self._tk_icon = ImageTk.PhotoImage(_raw)
             self.iconphoto(True, self._tk_icon)
+        # Windows taskbar reads from the window-class icon, which iconphoto
+        # doesn't reliably set on borderless windows — point iconbitmap at a
+        # real .ico so the FLUXUS logo (not the Tk default) shows up there.
+        if _ICO_PATH.exists():
+            try:
+                self.iconbitmap(default=str(_ICO_PATH))
+            except Exception as exc:
+                print(f"[FLUXUS] iconbitmap failed: {exc}")
         self._center_window()
         # overrideredirect strips the window from the Windows taskbar; re-add it
         # via WS_EX_APPWINDOW so users can find/focus FLUXUS like any other app.
         force_taskbar_entry(self)
+        if _ICO_PATH.exists():
+            apply_taskbar_icon(self, str(_ICO_PATH))
 
     def _center_window(self) -> None:
         self.update_idletasks()
