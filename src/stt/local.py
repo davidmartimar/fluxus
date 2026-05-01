@@ -39,11 +39,11 @@ def _cuda_runtime_available() -> bool:
     if os.name != "nt":
         return True  # Linux/Mac: trust the package manager to provide CUDA libs.
 
-    import ctypes
-
-    try:
-        ctypes.WinDLL("cublas64_12.dll")
-    except OSError:
+    # ctypes.WinDLL on Python 3.8+ uses safe DLL search and does NOT consult PATH,
+    # but ctranslate2's native LoadLibrary call does — so walk PATH ourselves to
+    # match what ctranslate2 will actually see.
+    dll_dir = _find_on_path("cublas64_12.dll")
+    if dll_dir is None:
         print(
             "[FLUXUS stt] CUDA GPU detected, but cublas64_12.dll is not on PATH. "
             "Falling back to CPU. To enable GPU, install CUDA 12 runtime + cuDNN 9 "
@@ -51,7 +51,20 @@ def _cuda_runtime_available() -> bool:
             flush=True,
         )
         return False
+
+    # Register the directory so any later ctypes-based load also resolves it.
+    try:
+        os.add_dll_directory(dll_dir)
+    except (OSError, AttributeError):
+        pass
     return True
+
+
+def _find_on_path(filename: str) -> Optional[str]:
+    for entry in os.environ.get("PATH", "").split(os.pathsep):
+        if entry and os.path.isfile(os.path.join(entry, filename)):
+            return entry
+    return None
 
 
 _VALID_CHOICES = ("auto", "cuda", "cpu")
