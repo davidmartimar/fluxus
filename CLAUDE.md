@@ -72,7 +72,7 @@ One PR per layer, in dependency order:
 | `feat/audio-capture` | sounddevice recording module | ✅ #4 |
 | `feat/stt-local` | faster-whisper integration + STT interface | ✅ #5 (+ #7 CUDA probe, #9 quality) |
 | `feat/clipboard-notify` | Auto-copy + auto-paste into previous window, "Pegar" switch | ✅ #10 |
-| `feat/packaging` | PyInstaller .exe build | 🚧 in progress |
+| `feat/packaging` | PyInstaller .exe build (`packaging/build.py`) | ✅ #11 |
 | `feat/stt-api-fallback` | OpenAI Whisper API fallback | ⏳ |
 | `feat/command-router` | Keyword command dispatcher | ⏳ |
 | `feat/llm-layer` | LLM refinement + cost logging | ⏳ |
