@@ -3,9 +3,14 @@ FLUXUS — entry point.
 Wires together all pipeline layers and launches the UI widget.
 """
 
+import sys
 import threading
 
 from config import settings  # noqa: F401 — ensures env vars are loaded first
+from src import runtime
+
+# Before anything else imports libraries that write to stdout/stderr.
+runtime.setup_logging()
 
 
 _MIN_AUDIO_SECONDS = 0.3
@@ -117,4 +122,11 @@ def main() -> None:
 
 
 if __name__ == "__main__":
-    main()
+    if not runtime.acquire_single_instance():
+        runtime.show_error("FLUXUS", "FLUXUS ya está abierto.")
+        sys.exit(0)
+    try:
+        main()
+    except Exception as exc:
+        runtime.report_fatal(exc)
+        sys.exit(1)
