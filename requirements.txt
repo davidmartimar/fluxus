@@ -15,5 +15,8 @@ openai>=1.30.0
 # Clipboard
 pyperclip>=1.9.0
 
+# Config
+python-dotenv>=1.0.0
+
 # Global hotkeys
 keyboard>=0.13.5

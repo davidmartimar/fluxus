@@ -58,10 +58,20 @@ def main() -> None:
 
     threading.Thread(target=warmup, daemon=True).start()
 
+    # Both callbacks run in order on the UI's single pipeline worker.
     def on_record_start() -> None:
-        recorder.start()
+        try:
+            recorder.start()
+        except Exception as exc:
+            app.notify_error(f"Micrófono no disponible: {exc}")
+            app.set_idle()
 
     def on_record_stop() -> None:
+        if not recorder.is_recording:
+            # start() failed and already reported the error.
+            app.set_idle()
+            return
+
         audio = recorder.stop()
         try:
             if audio.duration_seconds() < _MIN_AUDIO_SECONDS:
@@ -81,6 +91,7 @@ def main() -> None:
                 app.notify_error("Sin texto")
         finally:
             audio.clear()
+            app.set_idle()
 
     app.on_record_start = on_record_start
     app.on_record_stop = on_record_stop

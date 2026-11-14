@@ -7,9 +7,13 @@ The record button toggles between idle and recording states.
 A collapsible mic picker shows the active input device and lets the user pick another.
 The transcript stays visible until the next recording starts; the user clicks Copiar
 to copy it to the clipboard.
+on_record_start / on_record_stop run in order on a single background worker thread,
+so a quick start→stop can never overtake each other.
 External layers (audio, STT, etc.) wire in via the callback properties:
     app.on_record_start  — called when recording begins
-    app.on_record_stop   — called when recording stops; receives no args
+    app.on_record_stop   — called when recording stops; receives no args. The pipeline
+                           MUST call app.set_idle() when it's done (success or error);
+                           until then the record button and hotkey are disabled.
     app.on_device_change — called with the new device index when the user picks a mic
     app.on_compute_change — called with 'auto'|'cuda'|'cpu' when the user picks a compute target
     app.on_copy          — called with the transcript text when the user clicks Copiar
@@ -17,7 +21,7 @@ External layers (audio, STT, etc.) wire in via the callback properties:
 
 from __future__ import annotations
 
-import threading
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from typing import Callable, Optional
 
@@ -44,6 +48,7 @@ _CLR_BG = "#1a1a1a"
 _CLR_SURFACE = "#2b2b2b"
 _CLR_IDLE = "#FF4444"
 _CLR_RECORDING = "#bf3a3a"
+_CLR_BUSY = "#444444"
 _CLR_TEXT = "#e0e0e0"
 _CLR_SUBTEXT = "#888888"
 
@@ -53,6 +58,13 @@ _COMPUTE_LABELS = {
     "CPU": "cpu",
 }
 _COMPUTE_REVERSE = {v: k for k, v in _COMPUTE_LABELS.items()}
+
+_ERROR_RESET_MS = 4000
+
+# Record-button states
+_IDLE = "idle"
+_RECORDING = "recording"
+_PROCESSING = "processing"
 
 
 class App(ctk.CTk):
@@ -71,9 +83,12 @@ class App(ctk.CTk):
         self.on_copy: Optional[Callable[[str], None]] = None
 
         # ── Internal state ────────────────────────────────────────────────────
-        self._recording = False
-        self._drag_x = 0
-        self._drag_y = 0
+        self._state = _IDLE
+        self._status_seq = 0  # bumped on every status change; lets stale resets bail out
+        self._drag_dx = 0
+        self._drag_dy = 0
+        # Single worker → record start/stop callbacks always run in click order.
+        self._worker = ThreadPoolExecutor(max_workers=1, thread_name_prefix="fluxus-pipeline")
         self._device_labels: dict[str, int] = {}
         self._current_transcript: str = ""
 
@@ -144,7 +159,7 @@ class App(ctk.CTk):
         title_bar.grid(row=0, column=0, sticky="ew")
         title_bar.grid_columnconfigure(0, weight=1)
 
-        ctk.CTkLabel(
+        title_label = ctk.CTkLabel(
             title_bar,
             text=" FLUXUS",
             image=self._icon_img_small,
@@ -152,7 +167,10 @@ class App(ctk.CTk):
             font=ctk.CTkFont(family="Segoe UI", size=11, weight="bold"),
             text_color=_CLR_TEXT,
             anchor="w",
-        ).grid(row=0, column=0, sticky="w", padx=(6, 0), pady=4)
+        )
+        title_label.grid(row=0, column=0, sticky="w", padx=(6, 0), pady=4)
+        # Only the title bar drags the window, so selecting transcript text doesn't.
+        self._drag_handles = (title_bar, title_label)
 
         self._close_btn = ctk.CTkButton(
             title_bar,
@@ -293,16 +311,18 @@ class App(ctk.CTk):
     # ── Drag ─────────────────────────────────────────────────────────────────
 
     def _bind_drag(self) -> None:
-        self.bind("<ButtonPress-1>", self._on_drag_start)
-        self.bind("<B1-Motion>", self._on_drag_motion)
+        for widget in self._drag_handles:
+            widget.bind("<ButtonPress-1>", self._on_drag_start)
+            widget.bind("<B1-Motion>", self._on_drag_motion)
 
+    # Screen coordinates (x_root/y_root) so it doesn't matter which handle got the event.
     def _on_drag_start(self, event) -> None:
-        self._drag_x = event.x
-        self._drag_y = event.y
+        self._drag_dx = event.x_root - self.winfo_x()
+        self._drag_dy = event.y_root - self.winfo_y()
 
     def _on_drag_motion(self, event) -> None:
-        x = self.winfo_x() + (event.x - self._drag_x)
-        y = self.winfo_y() + (event.y - self._drag_y)
+        x = event.x_root - self._drag_dx
+        y = event.y_root - self._drag_dy
         self.geometry(f"+{x}+{y}")
 
     # ── Hotkey ────────────────────────────────────────────────────────────────
@@ -321,33 +341,58 @@ class App(ctk.CTk):
     # ── Record toggle ─────────────────────────────────────────────────────────
 
     def _toggle_record(self) -> None:
-        if self._recording:
-            self._stop_recording()
-        else:
+        if self._state == _IDLE:
             self._start_recording()
+        elif self._state == _RECORDING:
+            self._stop_recording()
+        # _PROCESSING: ignore until the pipeline calls set_idle().
 
     def _start_recording(self) -> None:
-        self._recording = True
+        self._set_state(_RECORDING)
         self.clear_transcript()
-        self._record_btn.configure(
-            text="■ Detener",
-            fg_color=_CLR_RECORDING,
-            hover_color="#a33030",
-        )
         self.set_status("Grabando…")
-        if self.on_record_start:
-            threading.Thread(target=self.on_record_start, daemon=True).start()
+        self._submit(self.on_record_start)
 
     def _stop_recording(self) -> None:
-        self._recording = False
-        self._record_btn.configure(
-            text="● Grabar",
-            fg_color=_CLR_IDLE,
-            hover_color="#cc3333",
-        )
+        self._set_state(_PROCESSING)
         self.set_status("Procesando…")
-        if self.on_record_stop:
-            threading.Thread(target=self.on_record_stop, daemon=True).start()
+        self._submit(self.on_record_stop)
+
+    def _set_state(self, state: str) -> None:
+        self._state = state
+        if state == _IDLE:
+            self._record_btn.configure(
+                text="● Grabar", fg_color=_CLR_IDLE, hover_color="#cc3333", state="normal"
+            )
+        elif state == _RECORDING:
+            self._record_btn.configure(
+                text="■ Detener", fg_color=_CLR_RECORDING, hover_color="#a33030", state="normal"
+            )
+        else:
+            self._record_btn.configure(
+                text="… Procesando", fg_color=_CLR_BUSY, state="disabled"
+            )
+
+    def _submit(self, callback: Optional[Callable[[], None]]) -> None:
+        if callback is None:
+            if self._state == _PROCESSING:
+                self._set_state(_IDLE)
+            return
+        self._worker.submit(self._run_callback, callback)
+
+    def _run_callback(self, callback: Callable[[], None]) -> None:
+        # Safety net: an uncaught error in the pipeline must never leave the UI stuck.
+        try:
+            callback()
+        except Exception as exc:
+            print(f"[FLUXUS] pipeline error: {exc!r}")
+            self.notify_error(str(exc) or exc.__class__.__name__)
+            self.set_idle()
+
+    def set_idle(self) -> None:
+        """Return the record button to idle (thread-safe). Call when processing ends
+        or when a recording couldn't start."""
+        self.after(0, lambda: self._set_state(_IDLE))
 
     # ── Mic picker ────────────────────────────────────────────────────────────
 
@@ -437,7 +482,12 @@ class App(ctk.CTk):
 
     def set_status(self, text: str) -> None:
         """Update the status label (thread-safe)."""
-        self.after(0, lambda: self._status_label.configure(text=text))
+        self.after(0, lambda: self._apply_status(text))
+
+    def _apply_status(self, text: str) -> int:
+        self._status_seq += 1
+        self._status_label.configure(text=text)
+        return self._status_seq
 
     def show_transcript(self, text: str) -> None:
         """Display the transcript in the textbox and enable Copiar (thread-safe)."""
@@ -471,8 +521,27 @@ class App(ctk.CTk):
 
     def notify_error(self, message: str) -> None:
         """Called by the pipeline on any error."""
-        self.set_status(f"✗ {message}")
-        self.after(4000, lambda: self.set_status("Listo"))
+        self.after(0, lambda: self._show_error(message))
+
+    def _show_error(self, message: str) -> None:
+        seq = self._apply_status(f"✗ {message}")
+
+        def reset() -> None:
+            # Only clear our own error, and only while idle — never overwrite
+            # "Grabando…" or a newer message that arrived in the meantime.
+            if self._status_seq == seq and self._state == _IDLE:
+                self._apply_status("Listo")
+
+        self.after(_ERROR_RESET_MS, reset)
+
+    def destroy(self) -> None:
+        try:
+            import keyboard  # type: ignore[import]
+            keyboard.unhook_all_hotkeys()
+        except Exception:
+            pass
+        self._worker.shutdown(wait=False, cancel_futures=True)
+        super().destroy()
 
     def run(self) -> None:
         """Start the Tkinter main loop."""
