@@ -56,4 +56,7 @@ AUDIO_CHANNELS = 1
 
 # --- UI ---
 HOTKEY = os.getenv("FLUXUS_HOTKEY", "ctrl+shift+space")
+# After transcribing, paste into the window you were in (text is always copied too).
+# Initial state of the "Pegar" switch in the title bar.
+AUTO_PASTE = os.getenv("FLUXUS_AUTO_PASTE", "true").lower() == "true"
 WINDOW_OPACITY = 0.92

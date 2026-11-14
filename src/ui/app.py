@@ -2,11 +2,11 @@
 Main application window for FLUXUS.
 
 A borderless, always-on-top floating widget built with CustomTkinter.
-Draggable via click-and-drag on the window body.
+Draggable via click-and-drag on the title bar.
 The record button toggles between idle and recording states.
 A collapsible mic picker shows the active input device and lets the user pick another.
-The transcript stays visible until the next recording starts; the user clicks Copiar
-to copy it to the clipboard.
+The transcript stays visible until the next recording starts. The pipeline copies it
+(and pastes it if the "Pegar" switch in the title bar is on); Copiar copies it again.
 on_record_start / on_record_stop run in order on a single background worker thread,
 so a quick start→stop can never overtake each other.
 External layers (audio, STT, etc.) wire in via the callback properties:
@@ -91,6 +91,8 @@ class App(ctk.CTk):
         self._worker = ThreadPoolExecutor(max_workers=1, thread_name_prefix="fluxus-pipeline")
         self._device_labels: dict[str, int] = {}
         self._current_transcript: str = ""
+        # Plain bool (not a Tk var) so the pipeline thread can read it safely.
+        self._auto_paste = settings.AUTO_PASTE
 
         # ── Load icon ────────────────────────────────────────────────────────
         self._icon_img_large = ctk.CTkImage(
@@ -172,6 +174,21 @@ class App(ctk.CTk):
         # Only the title bar drags the window, so selecting transcript text doesn't.
         self._drag_handles = (title_bar, title_label)
 
+        self._paste_switch = ctk.CTkSwitch(
+            title_bar,
+            text="Pegar",
+            width=36,
+            switch_width=26,
+            switch_height=13,
+            font=ctk.CTkFont(family="Segoe UI", size=10),
+            text_color=_CLR_SUBTEXT,
+            progress_color=_CLR_IDLE,
+            command=self._on_paste_toggled,
+        )
+        if self._auto_paste:
+            self._paste_switch.select()
+        self._paste_switch.grid(row=0, column=1, sticky="e", padx=(0, 4))
+
         self._close_btn = ctk.CTkButton(
             title_bar,
             text="✕",
@@ -184,7 +201,7 @@ class App(ctk.CTk):
             corner_radius=0,
             command=self.destroy,
         )
-        self._close_btn.grid(row=0, column=1, sticky="e")
+        self._close_btn.grid(row=0, column=2, sticky="e")
 
         # Body
         body = ctk.CTkFrame(self, fg_color=_CLR_BG, corner_radius=0)
@@ -477,6 +494,17 @@ class App(ctk.CTk):
         choice = _COMPUTE_LABELS.get(label, "auto")
         if self.on_compute_change:
             self.on_compute_change(choice)
+
+    # ── Auto-paste switch ─────────────────────────────────────────────────────
+
+    def _on_paste_toggled(self) -> None:
+        self._auto_paste = bool(self._paste_switch.get())
+        self.set_status("Auto-pegar activado" if self._auto_paste else "Solo copiar")
+
+    @property
+    def auto_paste(self) -> bool:
+        """Whether the transcript should be pasted into the previous window (thread-safe)."""
+        return self._auto_paste
 
     # ── Public API ────────────────────────────────────────────────────────────
 

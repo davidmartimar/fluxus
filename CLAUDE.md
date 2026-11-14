@@ -52,6 +52,7 @@ Key settings:
 - `FLUXUS_LLM_MODEL`: OpenAI model for refinement (default `gpt-4o-mini`)
 - `FLUXUS_WHISPER_DEVICE`: `auto` (CUDA → CPU fallback) | `cuda` | `cpu`
 - `FLUXUS_HOTKEY`: default `ctrl+shift+space`
+- `FLUXUS_AUTO_PASTE`: `true` / `false` — initial state of the title-bar "Pegar" switch
 
 ## Branch / PR strategy
 
