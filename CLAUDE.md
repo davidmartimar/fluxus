@@ -81,7 +81,7 @@ Improvements backlog (not tied to a layer):
 
 | Branch | Scope | Status |
 |--------|-------|--------|
-| `feat/persist-settings` | Remember mic, compute device, "Pegar" switch and window position between sessions | ⏳ |
-| `feat/compact-mode` | Collapse the widget to a minimal floating record button (toggle from the title bar / double-click); status shown via button colour, expand back to the full view | ⏳ |
+| `feat/persist-settings` | Remember mic, compute device, "Pegar" switch and window position between sessions (`src/prefs.py` → `%LOCALAPPDATA%\FLUXUS\prefs.json`) | ✅ #12 |
+| `feat/compact-mode` | Collapse the widget to a minimal floating record button (— in the title bar; click = record, drag = move, right-click = expand); status shown via button colour | ✅ #12 |
 | `feat/recording-feedback` | Mic level meter while recording + configurable max recording length | ⏳ |
 | `chore/tests` | pytest suite for hardware-free parts (AudioData, device resolution, paste decisions, UI state machine) | ⏳ |
