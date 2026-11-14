@@ -14,7 +14,7 @@ Press a hotkey → speak → text is transcribed and copied to your clipboard, r
 - **API fallback** — OpenAI Whisper API when local inference is not desired
 - **LLM refinement** *(optional)* — cleans filler words and fixes grammar via OpenAI (gpt-4o-mini)
 - **Command router** — keyword-triggered local actions (e.g. "Comando: Abre Youtube") bypass the LLM and run Python scripts directly
-- **Auto-clipboard** — result is copied automatically; just press `Ctrl+V`
+- **Auto-clipboard & auto-paste** — result is copied automatically and, with the *Pegar* switch on, pasted straight into the window you were working in
 - **Portable** — distributed as a single `.exe` built with PyInstaller
 
 ---
@@ -68,6 +68,7 @@ All settings are driven by environment variables. Copy `.env.example` to `.env` 
 | `FLUXUS_LLM_ENABLED` | `false` | Enable LLM text refinement via OpenAI |
 | `FLUXUS_LLM_MODEL` | `gpt-4o-mini` | OpenAI model for LLM refinement |
 | `FLUXUS_HOTKEY` | `ctrl+shift+space` | Global hotkey to toggle recording |
+| `FLUXUS_AUTO_PASTE` | `true` | Initial state of the *Pegar* switch: paste the transcript into the previous window (it is always copied too) |
 | `OPENAI_API_KEY` | — | Required for `api` STT engine or LLM refinement |
 
 ### GPU support

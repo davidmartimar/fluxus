@@ -12,8 +12,7 @@ _MIN_AUDIO_SECONDS = 0.3
 
 
 def main() -> None:
-    import pyperclip
-
+    from src.clipboard import ClipboardError, Delivery, ForegroundTracker, copy_text, deliver
     from src.ui import App
     from src.audio import Recorder, default_input_device, list_input_devices
     from src.stt import create_engine
@@ -28,10 +27,15 @@ def main() -> None:
     app.on_device_change = recorder.set_device
     app.set_compute_device(stt.user_choice)
 
+    # Remembers the window you were in, so the transcript can be pasted back there.
+    focus = ForegroundTracker()
+    focus.start()
+    paste_target: list[int | None] = [None]  # set per recording, read by on_record_stop
+
     def copy_to_clipboard(text: str) -> None:
         try:
-            pyperclip.copy(text)
-        except Exception as exc:
+            copy_text(text)
+        except ClipboardError as exc:
             app.notify_error(f"Copia fallida: {exc}")
 
     app.on_copy = copy_to_clipboard
@@ -63,6 +67,7 @@ def main() -> None:
 
     # Both callbacks run in order on the UI's single pipeline worker.
     def on_record_start() -> None:
+        paste_target[0] = focus.current_target()
         try:
             recorder.start()
         except Exception as exc:
@@ -88,10 +93,19 @@ def main() -> None:
                 app.notify_error(str(exc))
                 return
 
-            if text:
-                app.notify_done(text)
-            else:
+            if not text:
                 app.notify_error("Sin texto")
+                return
+
+            app.notify_done(text)
+            try:
+                result = deliver(text, paste_target[0], auto_paste=app.auto_paste)
+            except ClipboardError as exc:
+                app.notify_error(f"Copia fallida: {exc}")
+                return
+            app.set_status(
+                "✓ Pegado" if result is Delivery.PASTED else "✓ Copiado al portapapeles"
+            )
         finally:
             audio.clear()
             app.set_idle()
