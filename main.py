@@ -38,11 +38,14 @@ def main() -> None:
 
     # Warm up the model in the background so the first transcribe doesn't pay model load cost.
     def warmup() -> None:
-        app.set_status("Cargando modelo…")
+        model = getattr(stt, "model_name", "modelo")
+        app.set_status(f"Cargando {model}…")
         try:
             stt.warmup()
+            # Re-read after warmup: auto mode may have fallen back from CUDA to CPU.
             device = getattr(stt, "device", "?")
-            app.set_status(f"Listo ({device.upper()})")
+            model = getattr(stt, "model_name", "")
+            app.set_status(f"Listo ({device.upper()} · {model})" if model else f"Listo ({device.upper()})")
         except Exception as exc:
             app.notify_error(f"Modelo no cargado: {exc}")
 

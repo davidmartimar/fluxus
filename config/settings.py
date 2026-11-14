@@ -16,12 +16,34 @@ else:
 
 # --- STT ---
 STT_ENGINE = os.getenv("FLUXUS_STT_ENGINE", "local")  # "local" | "api"
-WHISPER_MODEL = os.getenv("FLUXUS_WHISPER_MODEL", "base")  # tiny | base | small | medium | large-v3
+# Model size: tiny | base | small | medium | large-v3 | large-v3-turbo.
+# Empty (default) = pick by device: large-v3-turbo on CUDA, small on CPU.
+WHISPER_MODEL = os.getenv("FLUXUS_WHISPER_MODEL", "").strip()
+WHISPER_MODEL_CUDA_DEFAULT = "large-v3-turbo"
+WHISPER_MODEL_CPU_DEFAULT = "small"
 # Device for local STT: "auto" tries CUDA first, then falls back to CPU.
 # NVIDIA users: "cuda" | AMD/Intel GPU users: "cpu" (ROCm builds not bundled)
 WHISPER_DEVICE = os.getenv("FLUXUS_WHISPER_DEVICE", "auto")  # "auto" | "cuda" | "cpu"
 # Language hint for transcription. "auto" lets Whisper detect (slower, error-prone on short clips).
 WHISPER_LANGUAGE = os.getenv("FLUXUS_LANGUAGE", "es")  # "es" | "en" | "auto"
+
+# Style hint: Whisper imitates the punctuation/casing of this text. A well-punctuated
+# sample sentence in the target language noticeably improves commas, accents and "¿?".
+# Unset → built-in sample for the selected language; set to empty to disable.
+_DEFAULT_PROMPTS = {
+    "es": "Hola, ¿qué tal? Te escribo para confirmar la reunión del martes: revisaremos el informe, los próximos pasos y el presupuesto.",
+    "en": "Hi, how are you? I'm writing to confirm Tuesday's meeting: we'll review the report, next steps and the budget.",
+}
+WHISPER_INITIAL_PROMPT = os.getenv(
+    "FLUXUS_INITIAL_PROMPT", _DEFAULT_PROMPTS.get(WHISPER_LANGUAGE, "")
+).strip()
+# Comma-separated words Whisper should favour (names, jargon): "FLUXUS, Kubernetes, Marcasombra"
+WHISPER_HOTWORDS = os.getenv("FLUXUS_HOTWORDS", "").strip()
+
+# Voice-activity filter (drops silence → avoids hallucinated text on quiet clips).
+# Lower threshold = keeps softer speech; more padding = doesn't clip word starts/ends.
+VAD_THRESHOLD = float(os.getenv("FLUXUS_VAD_THRESHOLD", "0.35"))
+VAD_SPEECH_PAD_MS = int(os.getenv("FLUXUS_VAD_SPEECH_PAD_MS", "600"))
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY", "")
 
 # --- LLM (OpenAI only) ---

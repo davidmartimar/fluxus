@@ -4,6 +4,8 @@ Local STT engine backed by faster-whisper.
 Loads a Whisper model on construction (or first warmup() call) and transcribes
 in-memory float32 audio at 16 kHz. Device resolution honours settings.WHISPER_DEVICE:
 "auto" tries CUDA via ctranslate2 and falls back to CPU silently.
+Model size honours settings.WHISPER_MODEL; when unset it is chosen per device
+(large-v3-turbo on CUDA, small on CPU).
 """
 
 from __future__ import annotations
@@ -69,6 +71,31 @@ def _find_on_path(filename: str) -> Optional[str]:
 
 _VALID_CHOICES = ("auto", "cuda", "cpu")
 
+# Whisper was trained on subtitled video and "hears" credits in near-silence.
+_HALLUCINATION_MARKERS = ("amara.org", "subtítulos realizados por", "subtitulado por")
+# Standard Whisper heuristic: likely no speech AND low confidence → discard segment.
+_NO_SPEECH_PROB = 0.6
+_LOW_LOGPROB = -1.0
+
+
+def _model_for(device: str) -> str:
+    if settings.WHISPER_MODEL:
+        return settings.WHISPER_MODEL
+    return (
+        settings.WHISPER_MODEL_CUDA_DEFAULT
+        if device == "cuda"
+        else settings.WHISPER_MODEL_CPU_DEFAULT
+    )
+
+
+def _is_hallucination(seg) -> bool:
+    text = seg.text.strip().lower()
+    if not text:
+        return True
+    if any(marker in text for marker in _HALLUCINATION_MARKERS):
+        return True
+    return seg.no_speech_prob > _NO_SPEECH_PROB and seg.avg_logprob < _LOW_LOGPROB
+
 
 class LocalWhisperEngine(STTEngine):
     def __init__(self) -> None:
@@ -113,9 +140,19 @@ class LocalWhisperEngine(STTEngine):
             segments, _info = model.transcribe(
                 audio.samples,
                 language=language,
+                initial_prompt=settings.WHISPER_INITIAL_PROMPT or None,
+                hotwords=settings.WHISPER_HOTWORDS or None,
+                # Each dictation is independent; carrying context across 30 s windows
+                # is the main cause of repeated/looping text in long recordings.
+                condition_on_previous_text=False,
                 vad_filter=True,
+                vad_parameters={
+                    "threshold": settings.VAD_THRESHOLD,
+                    "speech_pad_ms": settings.VAD_SPEECH_PAD_MS,
+                },
             )
-            return " ".join(seg.text.strip() for seg in segments).strip()
+            kept = [seg.text.strip() for seg in segments if not _is_hallucination(seg)]
+            return " ".join(kept).strip()
         except Exception as exc:
             raise STTError(f"faster-whisper failed: {exc}") from exc
 
@@ -143,7 +180,7 @@ class LocalWhisperEngine(STTEngine):
 
             try:
                 self._model = WhisperModel(
-                    settings.WHISPER_MODEL,
+                    _model_for(self._device),
                     device=self._device,
                     compute_type=self._compute_type,
                 )
@@ -159,18 +196,18 @@ class LocalWhisperEngine(STTEngine):
                     self._compute_type = "int8"
                     try:
                         self._model = WhisperModel(
-                            settings.WHISPER_MODEL,
+                            _model_for("cpu"),
                             device="cpu",
                             compute_type="int8",
                         )
                         return self._model
                     except Exception as cpu_exc:
                         raise STTError(
-                            f"Could not load Whisper model '{settings.WHISPER_MODEL}' "
+                            f"Could not load Whisper model '{_model_for('cpu')}' "
                             f"on CPU after CUDA fallback: {cpu_exc}"
                         ) from cpu_exc
                 raise STTError(
-                    f"Could not load Whisper model '{settings.WHISPER_MODEL}' "
+                    f"Could not load Whisper model '{_model_for(self._device)}' "
                     f"on device '{self._device}': {exc}"
                 ) from exc
 
@@ -178,6 +215,11 @@ class LocalWhisperEngine(STTEngine):
     def device(self) -> str:
         """Device the model is *currently* loaded on (post-fallback)."""
         return self._device
+
+    @property
+    def model_name(self) -> str:
+        """Whisper model used on the current device."""
+        return _model_for(self._device)
 
     @staticmethod
     def _resolve_device(choice: str) -> str:
