@@ -15,7 +15,7 @@ Press a hotkey → speak → text is transcribed and copied to your clipboard, r
 - **LLM refinement** *(optional)* — cleans filler words and fixes grammar via OpenAI (gpt-4o-mini)
 - **Command router** — keyword-triggered local actions (e.g. "Comando: Abre Youtube") bypass the LLM and run Python scripts directly
 - **Auto-clipboard & auto-paste** — result is copied automatically and, with the *Pegar* switch on, pasted straight into the window you were working in
-- **Portable** — distributed as a single `.exe` built with PyInstaller
+- **Portable** — distributed as a self-contained folder with `FLUXUS.exe` (PyInstaller); no Python needed
 
 ---
 
@@ -50,6 +50,22 @@ python main.py
 ```
 
 ---
+
+## Building the .exe
+
+```bash
+pip install -r requirements-dev.txt
+python packaging\build.py          # → dist\FLUXUS\FLUXUS.exe
+python packaging\build.py --zip    # also creates dist\FLUXUS-<date>.zip to share
+```
+
+Distribute the whole `dist\FLUXUS` folder (or the zip). Notes:
+
+- **Config**: copy `.env.example` (next to `FLUXUS.exe`) to `.env` in that same folder.
+- **Models** are not bundled: the first launch downloads the Whisper model (~480 MB `small` on CPU, ~1.6 GB `large-v3-turbo` on GPU) to `%USERPROFILE%\.cache\huggingface`.
+- **GPU**: needs the CUDA 12 runtime + cuDNN 9 on `PATH`, same as from source; otherwise *Auto* uses the CPU.
+- **Logs**: the windowed build writes to `%LOCALAPPDATA%\FLUXUS\fluxus.log`.
+- Only one FLUXUS runs at a time (a second launch shows a notice and exits).
 
 ## Configuration
 

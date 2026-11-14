@@ -4,15 +4,23 @@ Override values via a .env file or environment variables.
 """
 
 import os
+import sys
 from pathlib import Path
+
+# Packaged build (PyInstaller): user files (.env) live next to FLUXUS.exe.
+# Source checkout: project root.
+FROZEN = getattr(sys, "frozen", False)
+APP_DIR = Path(sys.executable).resolve().parent if FROZEN else Path(__file__).resolve().parent.parent
+# Per-user writable data (logs, future persisted settings).
+DATA_DIR = Path(os.getenv("LOCALAPPDATA") or Path.home()) / "FLUXUS"
 
 try:
     from dotenv import load_dotenv
 except ImportError:  # pragma: no cover — dependency missing, fall back to OS env only
     print("[FLUXUS] python-dotenv not installed; .env file will be ignored.")
 else:
-    # Project-root .env; real environment variables take precedence over the file.
-    load_dotenv(Path(__file__).resolve().parent.parent / ".env", override=False)
+    # Real environment variables take precedence over the file.
+    load_dotenv(APP_DIR / ".env", override=False)
 
 # --- STT ---
 STT_ENGINE = os.getenv("FLUXUS_STT_ENGINE", "local")  # "local" | "api"

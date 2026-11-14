@@ -13,7 +13,14 @@ pip install -r requirements.txt
 
 # Run the app
 python main.py
+
+# Build the Windows distributable (dist\FLUXUS\FLUXUS.exe); --zip to also archive it
+pip install -r requirements-dev.txt
+python packaging\build.py
 ```
+
+In the packaged build `.env` is read from next to `FLUXUS.exe` (`settings.APP_DIR`), and
+stdout/stderr go to `%LOCALAPPDATA%\FLUXUS\fluxus.log` (`src/runtime.py`).
 
 ## Architecture
 
