@@ -82,5 +82,6 @@ Improvements backlog (not tied to a layer):
 | Branch | Scope | Status |
 |--------|-------|--------|
 | `feat/persist-settings` | Remember mic, compute device, "Pegar" switch and window position between sessions | ⏳ |
+| `feat/compact-mode` | Collapse the widget to a minimal floating record button (toggle from the title bar / double-click); status shown via button colour, expand back to the full view | ⏳ |
 | `feat/recording-feedback` | Mic level meter while recording + configurable max recording length | ⏳ |
 | `chore/tests` | pytest suite for hardware-free parts (AudioData, device resolution, paste decisions, UI state machine) | ⏳ |
