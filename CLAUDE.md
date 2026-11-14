@@ -58,14 +58,22 @@ Key settings:
 
 One PR per layer, in dependency order:
 
-| Branch | Scope |
-|--------|-------|
-| `feat/project-scaffold` | Structure, requirements, config, CLAUDE.md |
-| `feat/ui-shell` | Floating CustomTkinter window + hotkey |
-| `feat/audio-capture` | sounddevice recording module |
-| `feat/stt-local` | faster-whisper integration + STT interface |
-| `feat/stt-api-fallback` | OpenAI Whisper API fallback |
-| `feat/llm-layer` | LLM refinement + cost logging |
-| `feat/command-router` | Keyword command dispatcher |
-| `feat/clipboard-notify` | pyperclip copy + UI feedback |
-| `feat/packaging` | PyInstaller .exe build |
+| Branch | Scope | Status |
+|--------|-------|--------|
+| `feat/project-scaffold` | Structure, requirements, config, CLAUDE.md | ✅ #1 |
+| `feat/ui-shell` | Floating CustomTkinter window + hotkey | ✅ #2 |
+| `feat/audio-capture` | sounddevice recording module | ✅ #4 |
+| `feat/stt-local` | faster-whisper integration + STT interface | ✅ #5 (+ #7 CUDA probe, #9 quality) |
+| `feat/clipboard-notify` | Auto-copy + auto-paste into previous window, "Pegar" switch | ✅ #10 |
+| `feat/packaging` | PyInstaller .exe build | 🚧 in progress |
+| `feat/stt-api-fallback` | OpenAI Whisper API fallback | ⏳ |
+| `feat/command-router` | Keyword command dispatcher | ⏳ |
+| `feat/llm-layer` | LLM refinement + cost logging | ⏳ |
+
+Improvements backlog (not tied to a layer):
+
+| Branch | Scope | Status |
+|--------|-------|--------|
+| `feat/persist-settings` | Remember mic, compute device, "Pegar" switch and window position between sessions | ⏳ |
+| `feat/recording-feedback` | Mic level meter while recording + configurable max recording length | ⏳ |
+| `chore/tests` | pytest suite for hardware-free parts (AudioData, device resolution, paste decisions, UI state machine) | ⏳ |
