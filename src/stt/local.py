@@ -104,13 +104,13 @@ class LocalWhisperEngine(STTEngine):
         if len(audio.samples) == 0:
             return ""
 
-        self._ensure_loaded()
-        assert self._model is not None  # for type checker
+        # Keep a local reference: set_device() may drop self._model concurrently.
+        model = self._ensure_loaded()
 
         language = None if settings.WHISPER_LANGUAGE == "auto" else settings.WHISPER_LANGUAGE
 
         try:
-            segments, _info = self._model.transcribe(
+            segments, _info = model.transcribe(
                 audio.samples,
                 language=language,
                 vad_filter=True,
@@ -121,12 +121,13 @@ class LocalWhisperEngine(STTEngine):
 
     # ── Internal ──────────────────────────────────────────────────────────────
 
-    def _ensure_loaded(self) -> None:
-        if self._model is not None:
-            return
+    def _ensure_loaded(self) -> WhisperModel:
+        model = self._model
+        if model is not None:
+            return model
         with self._load_lock:
             if self._model is not None:
-                return
+                return self._model
 
             # Hard guard: explicit CUDA choice without runtime libs would hang during
             # transcribe (lazy DLL load). Surface a clean error instead.
@@ -146,7 +147,7 @@ class LocalWhisperEngine(STTEngine):
                     device=self._device,
                     compute_type=self._compute_type,
                 )
-                return
+                return self._model
             except Exception as exc:
                 # Auto-mode safety net for non-DLL CUDA failures (OOM, driver, etc.).
                 if self._device == "cuda" and self._user_choice == "auto":
@@ -162,7 +163,7 @@ class LocalWhisperEngine(STTEngine):
                             device="cpu",
                             compute_type="int8",
                         )
-                        return
+                        return self._model
                     except Exception as cpu_exc:
                         raise STTError(
                             f"Could not load Whisper model '{settings.WHISPER_MODEL}' "

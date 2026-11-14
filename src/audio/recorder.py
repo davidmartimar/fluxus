@@ -31,14 +31,15 @@ from config import settings
 
 @dataclass
 class AudioData:
-    """Immutable container for a single recording."""
+    """Container for a single recording. Call clear() to purge it from memory."""
 
     samples: np.ndarray  # float32, shape (n_samples,), mono
     sample_rate: int
 
     def as_wav_bytes(self) -> bytes:
         """Encode to WAV and return as bytes (for OpenAI Whisper API)."""
-        pcm = (self.samples * 32767).astype(np.int16)
+        # Clip first: float samples slightly above 1.0 would wrap around in int16.
+        pcm = (np.clip(self.samples, -1.0, 1.0) * 32767).astype(np.int16)
         buf = io.BytesIO()
         with wave.open(buf, "wb") as wf:
             wf.setnchannels(1)
@@ -98,20 +99,29 @@ class Recorder:
 
     def start(self) -> None:
         """Begin capturing audio from the configured (or default) microphone."""
+        """Raises (sounddevice.PortAudioError etc.) if the device can't be opened;
+        in that case the recorder stays idle."""
         if self._recording:
             return
         with self._lock:
             self._chunks.clear()
-            self._recording = True
 
-        self._stream = sd.InputStream(
+        stream = sd.InputStream(
             device=self._device,
             samplerate=settings.AUDIO_SAMPLE_RATE,
             channels=settings.AUDIO_CHANNELS,
             dtype="float32",
             callback=self._callback,
         )
-        self._stream.start()
+        try:
+            # Flag first so the very first callback buffer isn't dropped.
+            self._recording = True
+            stream.start()
+        except Exception:
+            self._recording = False
+            stream.close()
+            raise
+        self._stream = stream
 
     def stop(self) -> AudioData:
         """
