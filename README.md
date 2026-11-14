@@ -9,6 +9,8 @@ Press a hotkey → speak → text is transcribed and copied to your clipboard, r
 ## Features
 
 - **Floating widget** — borderless, always-on-top window that stays out of the way
+- **Compact mode** — click **—** in the title bar to shrink FLUXUS to a single round record button. Click to record/stop, drag to move, **right-click** to go back to the full view. The colour shows the state: red = ready, dark red ■ = recording, grey ••• = processing, green ✓ = done, amber ! = error
+- **Remembers your choices** — microphone, CPU/GPU, *Pegar* switch, compact mode and window positions are restored on the next launch
 - **Global hotkey** — trigger recording from any application (`Ctrl+Shift+Space` by default)
 - **Local STT** — transcription via [faster-whisper](https://github.com/SYSTRAN/faster-whisper); runs on NVIDIA (CUDA), or CPU on any machine
 - **API fallback** — OpenAI Whisper API when local inference is not desired
@@ -69,7 +71,9 @@ Distribute the whole `dist\FLUXUS` folder (or the zip). Notes:
 
 ## Configuration
 
-All settings are driven by environment variables. Copy `.env.example` to `.env` and adjust:
+All settings are driven by environment variables. Copy `.env.example` to `.env` and adjust.
+
+Choices you make in the widget (microphone, CPU/GPU, *Pegar*, compact mode, window positions) are saved to `%LOCALAPPDATA%\FLUXUS\prefs.json` and take precedence over the `.env` defaults. Delete that file to go back to the defaults.
 
 | Variable | Default | Description |
 |---|---|---|

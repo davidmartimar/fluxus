@@ -21,16 +21,45 @@ def main() -> None:
     from src.ui import App
     from src.audio import Recorder, default_input_device, list_input_devices
     from src.stt import create_engine
+    from src.prefs import Prefs
+
+    # Choices made in the UI last time; they override .env defaults.
+    prefs = Prefs()
 
     app = App()
+    devices = list_input_devices()
+    device_names = dict(devices)
+
+    # Mic: saved by name (indices change when devices are plugged/unplugged).
     initial_device = default_input_device()
+    saved_mic = prefs.get("mic_name")
+    if saved_mic:
+        initial_device = next((i for i, n in devices if n == saved_mic), initial_device)
     recorder = Recorder(device=initial_device)
     stt = create_engine()
 
-    devices = list_input_devices()
+    saved_compute = prefs.get("compute")
+    if saved_compute and saved_compute != stt.user_choice and hasattr(stt, "set_device"):
+        try:
+            stt.set_device(saved_compute)
+        except Exception as exc:
+            print(f"[FLUXUS] saved compute '{saved_compute}' not applied: {exc}")
+
     app.set_input_devices(devices, current=initial_device)
-    app.on_device_change = recorder.set_device
     app.set_compute_device(stt.user_choice)
+
+    def change_device(index: int) -> None:
+        recorder.set_device(index)
+        prefs.update(mic_name=device_names.get(index))
+
+    app.on_device_change = change_device
+    app.on_ui_change = lambda changes: prefs.update(**changes)
+    app.apply_ui_prefs(
+        auto_paste=prefs.get("auto_paste"),
+        compact=prefs.get("compact"),
+        full_pos=prefs.get("full_pos"),
+        compact_pos=prefs.get("compact_pos"),
+    )
 
     # Remembers the window you were in, so the transcript can be pasted back there.
     focus = ForegroundTracker()
@@ -64,6 +93,7 @@ def main() -> None:
         except Exception as exc:
             app.notify_error(f"Cambio de compute fallido: {exc}")
             return
+        prefs.update(compute=choice)
         threading.Thread(target=warmup, daemon=True).start()
 
     app.on_compute_change = change_compute
