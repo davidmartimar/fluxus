@@ -46,7 +46,8 @@ Copy `.env.example` (to be created) to `.env` and fill in API keys — never com
 
 Key settings:
 - `FLUXUS_STT_ENGINE`: `local` (default) or `api`
-- `FLUXUS_WHISPER_MODEL`: `tiny` | `base` | `small` | `medium` | `large-v3`
+- `FLUXUS_WHISPER_MODEL`: `tiny` | `base` | `small` | `medium` | `large-v3` | `large-v3-turbo` (unset = `large-v3-turbo` on CUDA, `small` on CPU)
+- `FLUXUS_HOTWORDS` / `FLUXUS_INITIAL_PROMPT`: vocabulary and punctuation-style hints for Whisper
 - `FLUXUS_LLM_ENABLED`: `true` / `false`
 - `FLUXUS_LLM_MODEL`: OpenAI model for refinement (default `gpt-4o-mini`)
 - `FLUXUS_WHISPER_DEVICE`: `auto` (CUDA → CPU fallback) | `cuda` | `cpu`

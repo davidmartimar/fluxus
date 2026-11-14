@@ -58,7 +58,12 @@ All settings are driven by environment variables. Copy `.env.example` to `.env` 
 | Variable | Default | Description |
 |---|---|---|
 | `FLUXUS_STT_ENGINE` | `local` | `local` (faster-whisper) or `api` (OpenAI Whisper) |
-| `FLUXUS_WHISPER_MODEL` | `base` | `tiny` · `base` · `small` · `medium` · `large-v3` |
+| `FLUXUS_WHISPER_MODEL` | *(by device)* | `tiny` · `base` · `small` · `medium` · `large-v3` · `large-v3-turbo`. Unset: `large-v3-turbo` on CUDA, `small` on CPU |
+| `FLUXUS_LANGUAGE` | `es` | `es` · `en` · `auto` |
+| `FLUXUS_HOTWORDS` | — | Comma-separated names/jargon Whisper should favour |
+| `FLUXUS_INITIAL_PROMPT` | *(per language)* | Punctuated sample text Whisper imitates; empty disables |
+| `FLUXUS_VAD_THRESHOLD` | `0.35` | Silence filter sensitivity (lower keeps softer speech) |
+| `FLUXUS_VAD_SPEECH_PAD_MS` | `600` | Padding kept around speech so word starts aren't clipped |
 | `FLUXUS_WHISPER_DEVICE` | `auto` | `auto` (CUDA if available, else CPU) · `cuda` · `cpu` |
 | `FLUXUS_LLM_ENABLED` | `false` | Enable LLM text refinement via OpenAI |
 | `FLUXUS_LLM_MODEL` | `gpt-4o-mini` | OpenAI model for LLM refinement |
